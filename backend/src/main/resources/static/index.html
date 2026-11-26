@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sapporo Community Shirt Pre-order</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar"><div class="brand"><span class="brand-mark">S</span><span>COMMUNITY KIT</span></div><a href="#order-form">Pre-order</a></header>
+  <main>
+    <section class="hero">
+      <div class="preview"><div class="preview-badge">2026 EDITION</div><img src="assets/dummy-tshirt.svg" alt="Community shirt design preview"></div>
+      <div class="details">
+        <p class="eyebrow">LIMITED COMMUNITY EDITION</p>
+        <h1>Sapporo<br><span>Community Tee</span></h1>
+        <p class="intro">Show your community pride with the 2026 official shirt. Choose every size and add the names and numbers you want printed.</p>
+        <div class="size-guide"><strong>Available sizes</strong><div class="size-pills"><span>XS</span><span>S</span><span>M</span><span>L</span><span>XL</span><span>XXL</span></div></div>
+      </div>
+    </section>
+
+    <section id="order-form" class="order-section">
+      <div class="section-heading"><div><p>YOUR DETAILS</p><h2>Place a pre-order</h2></div><span id="item-count">1 shirt</span></div>
+      <form id="orderForm">
+        <div class="buyer-grid">
+          <label>Family / Head name<input id="name" name="name" required maxlength="100" placeholder="Enter the head or buyer name"></label>
+          <label>Memo<textarea id="memo" name="memo" rows="2" placeholder="Any order note"></textarea></label>
+        </div>
+        <div class="items-header"><span>Shirt details</span><button type="button" id="addItem" class="add-button">+ Add another shirt</button></div>
+        <div id="items"></div>
+        <button type="submit" class="submit-button">Submit pre-order <span>→</span></button>
+        <p id="message" role="status"></p>
+      </form>
+    </section>
+  </main>
+
+  <dialog id="successDialog"><div class="success-icon">✓</div><h2>Pre-order submitted!</h2><p>Your shirt details have been recorded.</p><button type="button" id="closeDialog">Done</button></dialog>
+  <script src="app.js"></script>
+</body>
+</html>
