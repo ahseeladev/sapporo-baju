@@ -29,15 +29,14 @@ public class OrderController {
             List<OrderRequest> created = new ArrayList<>();
             Long parentOrderId = null;
 
-            for (TshirtItem item : request.getItems()) {
+            for (int itemIndex = 0; itemIndex < request.getItems().size(); itemIndex++) {
+                TshirtItem item = request.getItems().get(itemIndex);
                 OrderRequest row = new OrderRequest();
                 row.setName(item.getName() == null || item.getName().trim().isEmpty()
                     ? request.getName()
                     : item.getName().trim());
-                row.setParentOrderId(parentOrderId);
-                row.setRelationship(parentOrderId == null
-                    ? (item.getRelationship() == null ? "Head" : item.getRelationship())
-                    : (item.getRelationship() == null ? "Other" : item.getRelationship()));
+                row.setParentOrderId(itemIndex == 0 ? null : parentOrderId);
+                row.setRelationship(itemIndex == 0 ? "Head" : "Other");
                 row.setSizeCategory(item.getSizeCategory());
                 row.setSize(item.getSize());
                 row.setCustomDisplayNumber(item.getShirtNumber());
@@ -52,9 +51,23 @@ public class OrderController {
                 }
             }
 
-            return ResponseEntity.ok(created);
+            java.util.Map<String, String> editCodes = new java.util.LinkedHashMap<>();
+            for (OrderRequest createdOrder : created) {
+                if (createdOrder.getOrderId() == null) continue;
+                String editToken = service.createEditAccess(
+                    createdOrder.getOrderId(),
+                    createdOrder.getCustomDisplayName(),
+                    createdOrder.getCustomDisplayNumber()
+                );
+                editCodes.put(createdOrder.getOrderId().toString(), editToken);
+            }
+
+            return ResponseEntity.ok(java.util.Map.of(
+                "orders", created,
+                "editCodes", editCodes
+            ));
         } catch (Exception exception) {
-            return ResponseEntity.status(502).body(exception.getMessage());
+            return ResponseEntity.status(502).body(java.util.Map.of("message", exception.getMessage()));
         }
     }
 
@@ -89,6 +102,57 @@ public class OrderController {
                 .body(csv.toString());
         } catch (Exception exception) {
             return ResponseEntity.status(502).body("Supabase export failed: " + exception.getMessage());
+        }
+    }
+
+    @GetMapping("/public-list")
+    public ResponseEntity<?> publicList() {
+        try {
+            return ResponseEntity.ok(service.findPublicList());
+        } catch (Exception exception) {
+            return ResponseEntity.status(502).body(exception.getMessage());
+        }
+    }
+
+    @PatchMapping("/{orderId}")
+    public ResponseEntity<?> updateOrder(@PathVariable Long orderId,
+                                         @RequestHeader("X-Edit-Token") String editToken,
+                                         @Valid @RequestBody OrderRequest order) {
+        try {
+            if (!service.verifyEditAccess(orderId, editToken)) {
+                return ResponseEntity.status(403).body("Invalid or expired edit token");
+            }
+            service.updateOrderKeepCode(orderId, order);
+            return ResponseEntity.ok(java.util.Map.of("updated", true));
+        } catch (Exception exception) {
+            return ResponseEntity.status(502).body(exception.getMessage());
+        }
+    }
+
+    @DeleteMapping("/{orderId}")
+    public ResponseEntity<?> deleteOrder(@PathVariable Long orderId,
+                                         @RequestHeader("X-Edit-Token") String editToken) {
+        try {
+            if (!service.verifyEditAccess(orderId, editToken)) {
+                return ResponseEntity.status(403).body("Invalid or expired edit token");
+            }
+            service.softDeleteFamily(orderId);
+            return ResponseEntity.ok().build();
+        } catch (Exception exception) {
+            return ResponseEntity.status(502).body(exception.getMessage());
+        }
+    }
+
+    @PostMapping("/{orderId}/verify-edit")
+    public ResponseEntity<?> verifyEdit(@PathVariable Long orderId,
+                                        @RequestHeader("X-Edit-Token") String editToken) {
+        try {
+            if (!service.verifyEditAccess(orderId, editToken)) {
+                return ResponseEntity.status(403).body(java.util.Map.of("message", "Invalid or expired private code"));
+            }
+            return ResponseEntity.ok(java.util.Map.of("verified", true));
+        } catch (Exception exception) {
+            return ResponseEntity.status(502).body(java.util.Map.of("message", exception.getMessage()));
         }
     }
 

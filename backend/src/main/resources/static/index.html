@@ -4,37 +4,96 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sapporo Community Shirt Pre-order</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=13">
+  <link rel="stylesheet" href="form-polish.css?v=20">
 </head>
 <body>
-  <header class="topbar"><div class="brand"><span class="brand-mark">S</span><span>COMMUNITY KIT</span></div><a href="#order-form">Pre-order</a></header>
+  <header class="topbar"><div class="brand"><span class="brand-mark">S</span><span>Malaysian in SAPPORO</span></div><a href="#order-form">Pre-order</a></header>
   <main>
     <section class="hero">
-      <div class="preview"><div class="preview-badge">2026 EDITION</div><img src="assets/dummy-tshirt.svg" alt="Community shirt design preview"></div>
+      <div class="preview">
+        <div class="preview-badge">2027 EDITION</div>
+        <div class="design-carousel" aria-label="Shirt design images">
+          <div class="design-track">
+            <img class="design-slide active" src="assets/design-fullimage.jpg" alt="Full shirt design">
+            <img class="design-slide" src="assets/design-front.jpg" alt="Front shirt design">
+            <img class="design-slide" src="assets/design-back.jpg" alt="Back shirt design">
+            <img class="design-slide" src="assets/design-custom_name_number.jpg" alt="Custom name and number design">
+          </div>
+          <button type="button" class="carousel-arrow carousel-prev" aria-label="Previous design">‹</button>
+          <button type="button" class="carousel-arrow carousel-next" aria-label="Next design">›</button>
+          <div class="carousel-dots" aria-label="Choose design image">
+            <button type="button" class="carousel-dot active" aria-label="Image 1"></button>
+            <button type="button" class="carousel-dot" aria-label="Image 2"></button>
+            <button type="button" class="carousel-dot" aria-label="Image 3"></button>
+            <button type="button" class="carousel-dot" aria-label="Image 4"></button>
+          </div>
+        </div>
+      </div>
       <div class="details">
         <p class="eyebrow">LIMITED COMMUNITY EDITION</p>
-        <h1>Sapporo<br><span>Community Tee</span></h1>
-        <p class="intro">Show your community pride with the 2026 official shirt. Choose every size and add the names and numbers you want printed.</p>
-        <div class="size-guide"><strong>Available sizes</strong><div class="size-pills"><span>XS</span><span>S</span><span>M</span><span>L</span><span>XL</span><span>XXL</span></div></div>
+        <h1>Our<br><span style="font-size: 63px;">Community Tee</span></h1>
+        <p class="intro">Our Reiwa first-edition Sapporo community shirt!<br> Pick your size, add your name and number, and make it yours!</p>
+        <div class="size-guide">
+          <strong>Available sizes</strong>
+          <div class="size-chart-buttons">
+            <button type="button" class="size-guide-button" data-chart="assets/size_adult.jpg">Adult <span>↗</span></button>
+            <button type="button" class="size-guide-button" data-chart="assets/size_kids.jpg">Kids <span>↗</span></button>
+          </div>
+        </div>
       </div>
     </section>
 
     <section id="order-form" class="order-section">
       <div class="section-heading"><div><p>YOUR DETAILS</p><h2>Place a pre-order</h2></div><span id="item-count">1 shirt</span></div>
       <form id="orderForm">
-        <div class="buyer-grid">
-          <label>Family / Head name<input id="name" name="name" required maxlength="100" placeholder="Enter the head or buyer name"></label>
-          <label>Memo<textarea id="memo" name="memo" rows="2" placeholder="Any order note"></textarea></label>
-        </div>
         <div class="items-header"><span>Shirt details</span><button type="button" id="addItem" class="add-button">+ Add another shirt</button></div>
         <div id="items"></div>
         <button type="submit" class="submit-button">Submit pre-order <span>→</span></button>
         <p id="message" role="status"></p>
       </form>
     </section>
+
+    <section id="ordered-list" class="order-section ordered-list-section">
+      <div class="section-heading">
+        <div><p>COMMUNITY ORDERS</p><h2>Ordered list</h2></div>
+        <span id="ordered-count">0 orders</span>
+      </div>
+      <div class="ordered-grid" id="orderedGrid">
+        <p class="ordered-loading">Loading orders...</p>
+      </div>
+    </section>
   </main>
 
   <dialog id="successDialog"><div class="success-icon">✓</div><h2>Pre-order submitted!</h2><p>Your shirt details have been recorded.</p><button type="button" id="closeDialog">Done</button></dialog>
-  <script src="app.js"></script>
+  <dialog id="sizeGuideDialog" class="size-guide-dialog">
+    <button type="button" class="dialog-close" id="closeSizeGuide" aria-label="Close size chart">×</button>
+    <h2>Size chart</h2>
+    <img id="sizeGuideImage" src="assets/size_adult.jpg" alt="Shirt size chart">
+  </dialog>
+  <dialog id="orderEditDialog" class="order-edit-dialog">
+    <button type="button" class="dialog-close" id="closeOrderEdit" aria-label="Close edit order">×</button>
+    <h2>Edit / delete order</h2>
+    <div class="order-edit-code-step">
+      <label>Private code<input id="editCodeInput" type="text" placeholder="NAME_NUMBER (e.g. ALEESHA_24)" autocomplete="off"></label>
+      <button type="button" id="unlockOrderButton">Unlock</button>
+    </div>
+    <form id="orderEditForm" hidden>
+      <div class="order-edit-grid">
+        <label>Name<input id="editOrderName" maxlength="100"></label>
+        <label>Size type<select id="editOrderSizeCategory"><option>Adult</option><option>Kid</option></select></label>
+        <label>Size<select id="editOrderSize"></select></label>
+        <label>Display number<input id="editOrderNumber" inputmode="numeric" maxlength="30"></label>
+        <label>Display name<input id="editOrderDisplayName" maxlength="50" style="text-transform:uppercase"></label>
+        <label>Memo<input id="editOrderMemo" maxlength="255"></label>
+      </div>
+      <p id="editOrderMessage" class="edit-order-message"></p>
+      <div class="order-edit-actions">
+        <button type="submit" class="save-order-button">Save changes</button>
+        <button type="button" id="deleteOrderButton" class="delete-order-button">Delete order</button>
+      </div>
+    </form>
+  </dialog>
+  <script src="app.js?v=21"></script>
 </body>
 </html>

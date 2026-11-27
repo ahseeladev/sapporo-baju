@@ -28,7 +28,6 @@ public class OrderRequest {
     private Boolean deleteFlag = false;
     private Instant createdAt;
 
-    @NotEmpty
     @Valid
     private List<TshirtItem> items = new ArrayList<>();
 

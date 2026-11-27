@@ -33,7 +33,7 @@ public class SupabaseOrderService {
     }
 
     public OrderRequest create(OrderRequest order) throws Exception {
-        ensureConfigured();
+        ensureAdminConfigured();
 
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("name", order.getName());
@@ -46,13 +46,11 @@ public class SupabaseOrderService {
         row.put("memo", blankToNull(order.getMemo()));
         row.put("delete_flag", false);
 
-        String publicKey = publishableKey.isBlank() ? secretKey : publishableKey;
-
         HttpRequest request = HttpRequest.newBuilder()
             .uri(URI.create(supabaseUrl + "/rest/v1/orders"))
             .header("Content-Type", "application/json")
-            .header("apikey", publicKey)
-            .header("Authorization", "Bearer " + publicKey)
+            .header("apikey", secretKey)
+            .header("Authorization", "Bearer " + secretKey)
             .header("Prefer", "return=representation")
             .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(List.of(row))))
             .build();
@@ -103,6 +101,150 @@ public class SupabaseOrderService {
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
         ensureSuccess(response);
         return order;
+    }
+
+    public List<Map<String, Object>> findPublicList() throws Exception {
+        ensureConfigured();
+        String publicKey = publishableKey.isBlank() ? secretKey : publishableKey;
+
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(supabaseUrl + "/rest/v1/ordered_shirt_list?select=order_id,name,parent_order_id,size_category,size,custom_display_number,custom_display_name,relationship,created_at&order=created_at.desc"))
+            .header("apikey", publicKey)
+            .header("Authorization", "Bearer " + publicKey)
+            .GET()
+            .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        ensureSuccess(response);
+        return objectMapper.readValue(response.body(), new TypeReference<List<Map<String, Object>>>() {});
+    }
+
+    public String createEditAccess(Long orderId, String customName, String customNumber) throws Exception {
+        ensureAdminConfigured();
+        String token = normalizeEditCode(customName, customNumber);
+
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("order_id", orderId);
+        row.put("token_hash", sha256(token));
+
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(supabaseUrl + "/rest/v1/order_edit_access"))
+            .header("Content-Type", "application/json")
+            .header("apikey", secretKey)
+            .header("Authorization", "Bearer " + secretKey)
+            .header("Prefer", "return=minimal")
+            .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(List.of(row))))
+            .build();
+        ensureSuccess(httpClient.send(request, HttpResponse.BodyHandlers.ofString()));
+        return token;
+    }
+
+    public boolean verifyEditAccess(Long orderId, String token) throws Exception {
+        ensureAdminConfigured();
+        String normalized = token == null ? "" : token.trim().replaceAll("\\s+", "").toUpperCase();
+        if (!normalized.matches("[A-Z0-9]{1,10}_[0-9]{2}")) return false;
+        String hash = sha256(normalized);
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(supabaseUrl + "/rest/v1/order_edit_access?order_id=eq." + orderId + "&token_hash=eq." + hash + "&select=access_id&revoked_at=is.null"))
+            .header("apikey", secretKey)
+            .header("Authorization", "Bearer " + secretKey)
+            .GET()
+            .build();
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        ensureSuccess(response);
+        List<Map<String, Object>> rows = objectMapper.readValue(response.body(), new TypeReference<>() {});
+        return !rows.isEmpty();
+    }
+
+    public void updateOrder(Long orderId, OrderRequest order) throws Exception {
+        ensureAdminConfigured();
+        Map<String, Object> changes = new LinkedHashMap<>();
+        changes.put("name", order.getName());
+        changes.put("size_category", order.getSizeCategory());
+        changes.put("size", order.getSize());
+        changes.put("custom_display_number", blankToNull(order.getCustomDisplayNumber()));
+        changes.put("custom_display_name", blankToNull(order.getCustomDisplayName()));
+        changes.put("memo", blankToNull(order.getMemo()));
+
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(supabaseUrl + "/rest/v1/orders?order_id=eq." + orderId))
+            .header("Content-Type", "application/json")
+            .header("apikey", secretKey)
+            .header("Authorization", "Bearer " + secretKey)
+            .header("Prefer", "return=minimal")
+            .method("PATCH", HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(changes)))
+            .build();
+        ensureSuccess(httpClient.send(request, HttpResponse.BodyHandlers.ofString()));
+    }
+
+    public void softDeleteFamily(Long orderId) throws Exception {
+        ensureAdminConfigured();
+        Map<String, Object> changes = new LinkedHashMap<>();
+        changes.put("delete_flag", true);
+
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(supabaseUrl + "/rest/v1/orders?order_id=eq." + orderId))
+            .header("Content-Type", "application/json")
+            .header("apikey", secretKey)
+            .header("Authorization", "Bearer " + secretKey)
+            .header("Prefer", "return=minimal")
+            .method("PATCH", HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(changes)))
+            .build();
+        ensureSuccess(httpClient.send(request, HttpResponse.BodyHandlers.ofString()));
+
+        Map<String, Object> revoked = Map.of("revoked_at", java.time.Instant.now().toString());
+        HttpRequest revokeRequest = HttpRequest.newBuilder()
+            .uri(URI.create(supabaseUrl + "/rest/v1/order_edit_access?order_id=eq." + orderId))
+            .header("Content-Type", "application/json")
+            .header("apikey", secretKey)
+            .header("Authorization", "Bearer " + secretKey)
+            .method("PATCH", HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(revoked)))
+            .build();
+        ensureSuccess(httpClient.send(revokeRequest, HttpResponse.BodyHandlers.ofString()));
+    }
+
+    public String updateOrderAndRotateCode(Long orderId, OrderRequest order) throws Exception {
+        ensureAdminConfigured();
+        Map<String, Object> changes = new LinkedHashMap<>();
+        changes.put("name", order.getName());
+        changes.put("size_category", order.getSizeCategory());
+        changes.put("size", order.getSize());
+        changes.put("custom_display_number", blankToNull(order.getCustomDisplayNumber()));
+        changes.put("custom_display_name", blankToNull(order.getCustomDisplayName()));
+        changes.put("memo", blankToNull(order.getMemo()));
+
+        HttpRequest updateRequest = HttpRequest.newBuilder()
+            .uri(URI.create(supabaseUrl + "/rest/v1/orders?order_id=eq." + orderId + "&select=order_id,parent_order_id"))
+            .header("Content-Type", "application/json")
+            .header("apikey", secretKey)
+            .header("Authorization", "Bearer " + secretKey)
+            .header("Prefer", "return=representation")
+            .method("PATCH", HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(changes)))
+            .build();
+        HttpResponse<String> updateResponse = httpClient.send(updateRequest, HttpResponse.BodyHandlers.ofString());
+        ensureSuccess(updateResponse);
+
+        List<Map<String, Object>> updated = objectMapper.readValue(updateResponse.body(), new TypeReference<>() {});
+        if (updated.isEmpty()) throw new IllegalStateException("Order not found");
+
+        Long parentId = longValue(updated.get(0).get("parent_order_id"));
+        Long ownerId = parentId == null ? orderId : parentId;
+
+        if (parentId == null) {
+            String newToken = normalizeEditCode(order.getCustomDisplayName(), order.getCustomDisplayNumber());
+            Map<String, Object> codeChange = Map.of("token_hash", sha256(newToken));
+            HttpRequest codeRequest = HttpRequest.newBuilder()
+                .uri(URI.create(supabaseUrl + "/rest/v1/order_edit_access?order_id=eq." + ownerId))
+                .header("Content-Type", "application/json")
+                .header("apikey", secretKey)
+                .header("Authorization", "Bearer " + secretKey)
+                .method("PATCH", HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(codeChange)))
+                .build();
+            ensureSuccess(httpClient.send(codeRequest, HttpResponse.BodyHandlers.ofString()));
+            return newToken;
+        }
+
+        return null;
     }
 
     private OrderRequest mapRow(Map<String, Object> row) {
@@ -167,5 +309,41 @@ public class SupabaseOrderService {
         if (value == null) return null;
         if (value instanceof Number number) return number.longValue();
         return Long.parseLong(value.toString());
+    }
+
+    private static String sha256(String value) throws Exception {
+        java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+        byte[] hash = digest.digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return java.util.HexFormat.of().formatHex(hash);
+    }
+
+    private String normalizeEditCode(String customName, String customNumber) {
+        String name = customName == null ? "" : customName.trim().replaceAll("\\s+", "").toUpperCase();
+        String number = customNumber == null ? "" : customNumber.trim().replaceAll("[^0-9]", "");
+        if (name.isBlank() || number.isBlank()) {
+            throw new IllegalArgumentException("Custom display name and number are required to create the edit code");
+        }
+        return name + "_" + number;
+    }
+
+    public void updateOrderKeepCode(Long orderId, OrderRequest order) throws Exception {
+        ensureAdminConfigured();
+        Map<String, Object> changes = new LinkedHashMap<>();
+        changes.put("name", order.getName());
+        changes.put("size_category", order.getSizeCategory());
+        changes.put("size", order.getSize());
+        changes.put("custom_display_number", blankToNull(order.getCustomDisplayNumber()));
+        changes.put("custom_display_name", blankToNull(order.getCustomDisplayName()));
+        changes.put("memo", blankToNull(order.getMemo()));
+
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(supabaseUrl + "/rest/v1/orders?order_id=eq." + orderId))
+            .header("Content-Type", "application/json")
+            .header("apikey", secretKey)
+            .header("Authorization", "Bearer " + secretKey)
+            .header("Prefer", "return=minimal")
+            .method("PATCH", HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(changes)))
+            .build();
+        ensureSuccess(httpClient.send(request, HttpResponse.BodyHandlers.ofString()));
     }
 }
