@@ -186,10 +186,10 @@ async function loadOrderedList() {
     const orders = await response.json();
 
     count.textContent = `${orders.length} ${orders.length === 1 ? 'order' : 'orders'}`;
-    grid.innerHTML = orders.map(order => `
+    grid.innerHTML = orders.map((order, index) => `
       <article class="ordered-card" data-order-id="${escapeHtml(order.order_id)}" data-parent-id="${escapeHtml(order.parent_order_id || '')}" data-name="${escapeHtml(order.name)}" data-size-category="${escapeHtml(order.size_category)}" data-size="${escapeHtml(order.size)}" data-display-number="${escapeHtml(order.custom_display_number || '')}" data-display-name="${escapeHtml(order.custom_display_name || '')}">
         <div class="ordered-card-heading">
-          <strong>#${escapeHtml(order.order_id)}</strong>
+          <strong>#${index + 1}</strong>
           <span>${escapeHtml(order.size_category)} · ${escapeHtml(order.size)}</span>
         </div>
         <div class="ordered-card-display">
@@ -301,8 +301,6 @@ function openEditDeleteModal(orderId, ownerId) {
         })
       });
       if (!response.ok) throw new Error(await readResponseMessage(response));
-      const result = await response.json();
-      if (result.length === 0) throw new Error('Order not found or already deleted');
 
       dialog.close();
       await loadOrderedList();
@@ -316,10 +314,10 @@ function openEditDeleteModal(orderId, ownerId) {
   deleteButton.onclick = async () => {
     if (!confirm('Delete this order?')) return;
     try {
-      const response = await fetch(`${SUPABASE_URL}/rest/v1/orders?order_id=eq.${orderId}`, {
-        method: 'PATCH',
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/soft_delete_order`, {
+        method: 'POST',
         headers: {...SUPABASE_HEADERS, Prefer: 'return=minimal'},
-        body: JSON.stringify({delete_flag: true})
+        body: JSON.stringify({order_id_input: Number(orderId)})
       });
       if (!response.ok) throw new Error(await readResponseMessage(response));
       dialog.close();
@@ -329,4 +327,15 @@ function openEditDeleteModal(orderId, ownerId) {
       message.style.color = '#be123c';
     }
   };
+}
+
+async function readResponseMessage(response) {
+  const text = await response.text();
+  if (!text) return 'Request failed';
+  try {
+    const result = JSON.parse(text);
+    return result.message || result.error || text;
+  } catch (_error) {
+    return text;
+  }
 }
