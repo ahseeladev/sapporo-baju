@@ -173,6 +173,10 @@ body {
   font-size: 12px;
   font-weight: 800;
 }
+#item-count {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
 .buyer-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
