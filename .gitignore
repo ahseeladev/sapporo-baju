@@ -1,0 +1,11 @@
+# Local databases
+backend/data/
+*.mv.db
+*.trace.db
+
+# Temporary files
+.codex-temp-ignore
+無題1.txt
+
+# Maven build output
+backend/target/

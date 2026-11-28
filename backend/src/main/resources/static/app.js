@@ -1,5 +1,9 @@
+const API_BASE_URL = window.location.hostname === 'localhost'
+  ? ''
+  : 'https://YOUR-RENDER-SERVICE.onrender.com';
+
 const itemsContainer = document.querySelector('#items');
-const itemCount = document.querySelector('#item-count');
+const itemCount = document.querySelector('#orderCount');
 const form = document.querySelector('#orderForm');
 const message = document.querySelector('#message');
 
@@ -73,7 +77,7 @@ form.addEventListener('submit', async event => {
   };
 
   try {
-    const response = await fetch('/api/orders', {
+    const response = await fetch(`${API_BASE_URL}/api/orders`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(payload)
@@ -163,7 +167,7 @@ async function loadOrderedList() {
   if (!grid) return;
 
   try {
-    const response = await fetch('/api/orders/public-list');
+    const response = await fetch(`${API_BASE_URL}/api/orders/public-list`);
     if (!response.ok) throw new Error(await response.text());
     const orders = await response.json();
 
@@ -254,7 +258,7 @@ function openEditDeleteModal(orderId, ownerId) {
       return;
     }
     try {
-      const response = await fetch(`/api/orders/${orderId}/verify-edit`, {
+      const response = await fetch(`${API_BASE_URL}/api/orders/${orderId}/verify-edit`, {
         method: 'POST', headers: {'X-Edit-Token': token}
       });
       if (!response.ok) {
@@ -275,7 +279,7 @@ function openEditDeleteModal(orderId, ownerId) {
     event.preventDefault();
     const token = codeInput.value.trim();
     try {
-      const response = await fetch(`/api/orders/${orderId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/orders/${orderId}`, {
         method: 'PATCH',
         headers: {'Content-Type': 'application/json', 'X-Edit-Token': token},
         body: JSON.stringify({
@@ -301,7 +305,7 @@ function openEditDeleteModal(orderId, ownerId) {
     if (!confirm('Delete this order?')) return;
     const token = codeInput.value.trim();
     try {
-      const response = await fetch(`/api/orders/${orderId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/orders/${orderId}`, {
         method: 'DELETE', headers: {'X-Edit-Token': token}
       });
       if (!response.ok) throw new Error(await readResponseMessage(response));
