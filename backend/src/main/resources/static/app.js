@@ -1,10 +1,14 @@
-const API_BASE_URL =
-  window.location.hostname === 'localhost'
-    ? ''
-    : 'https://sapporo-baju.onrender.com';
+const SUPABASE_URL = 'https://dtshfdtmkgyzrxcvjyns.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_hvuw0uZ_zS_Ib-S77tPnDA_xz3WGSNj';
+
+const SUPABASE_HEADERS = {
+  apikey: SUPABASE_PUBLISHABLE_KEY,
+  Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+  'Content-Type': 'application/json'
+};
 
 const itemsContainer = document.querySelector('#items');
-const itemCount = document.querySelector('#orderCount');
+const itemCount = document.querySelector('#item-count');
 const form = document.querySelector('#orderForm');
 const message = document.querySelector('#message');
 
@@ -78,25 +82,32 @@ form.addEventListener('submit', async event => {
   };
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/orders`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(payload)
-    });
-    const responseText = await response.text();
-    let result = {};
-    try {
-      result = responseText ? JSON.parse(responseText) : {};
-    } catch (_error) {
-      throw new Error(responseText || 'The order could not be submitted');
+    let parentOrderId = null;
+
+    for (let itemIndex = 0; itemIndex < payload.items.length; itemIndex++) {
+      const item = payload.items[itemIndex];
+      const row = {
+        name: item.name || payload.name,
+        parent_order_id: itemIndex === 0 ? null : parentOrderId,
+        relationship: itemIndex === 0 ? 'Head' : 'Other',
+        size_category: item.sizeCategory,
+        size: item.size,
+        custom_display_number: item.shirtNumber || null,
+        custom_display_name: item.customName || null,
+        memo: item.memo || payload.memo || null,
+        delete_flag: false
+      };
+
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/orders`, {
+        method: 'POST',
+        headers: {...SUPABASE_HEADERS, Prefer: 'return=representation'},
+        body: JSON.stringify([row])
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const inserted = await response.json();
+      if (itemIndex === 0 && inserted[0]?.order_id) parentOrderId = inserted[0].order_id;
     }
-    if (!response.ok) throw new Error(result.message || 'The order could not be submitted');
-    if (result.editCodes) {
-      const codes = Object.entries(result.editCodes).map(([orderId, code]) => `Order #${orderId}: ${code}`).join('\n');
-      alert('Your private edit/delete codes:\n\n' + codes);
-    } else if (result.editToken) {
-      alert('Your private edit/delete code:\n\n' + result.editToken);
-    }
+
     form.reset();
     itemsContainer.innerHTML = '';
     addItem();
@@ -168,7 +179,9 @@ async function loadOrderedList() {
   if (!grid) return;
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/orders/public-list`);
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/ordered_shirt_list?select=order_id,name,parent_order_id,size_category,size,custom_display_number,custom_display_name,relationship,created_at&order=created_at.desc`, {
+      headers: SUPABASE_HEADERS
+    });
     if (!response.ok) throw new Error(await response.text());
     const orders = await response.json();
 
@@ -251,83 +264,69 @@ function openEditDeleteModal(orderId, ownerId) {
   dialog.showModal();
 
   document.querySelector('#unlockOrderButton').onclick = async () => {
-    const token = codeInput.value.trim();
+    const token = codeInput.value.trim().toUpperCase().replace(/\s+/g, '');
     message.className = 'edit-order-message';
     if (!token) {
       message.textContent = 'Enter your private code';
       message.style.color = '#be123c';
       return;
     }
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/orders/${orderId}/verify-edit`, {
-        method: 'POST', headers: {'X-Edit-Token': token}
-      });
-      if (!response.ok) {
-        message.textContent = 'Invalid or expired private code';
-        message.style.color = '#be123c';
-        return;
-      }
-      codeStep.hidden = true;
-      form.hidden = false;
-      message.textContent = '';
-    } catch (_error) {
+    const cardName = card.dataset.displayName || '';
+    const cardNumber = card.dataset.displayNumber || '';
+    const expectedCode = `${cardName}_${cardNumber}`.replace(/\s+/g, '').toUpperCase();
+    if (token !== expectedCode) {
       message.textContent = 'Invalid or expired private code';
       message.style.color = '#be123c';
+      return;
     }
+    codeStep.hidden = true;
+    form.hidden = false;
+    message.textContent = '';
   };
 
   form.onsubmit = async event => {
     event.preventDefault();
     const token = codeInput.value.trim();
     try {
-      const response = await fetch(`${API_BASE_URL}/api/orders/${orderId}`, {
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/orders?order_id=eq.${orderId}`, {
         method: 'PATCH',
-        headers: {'Content-Type': 'application/json', 'X-Edit-Token': token},
+        headers: {...SUPABASE_HEADERS, Prefer: 'return=minimal'},
         body: JSON.stringify({
           name: document.querySelector('#editOrderName').value.trim(),
-          sizeCategory: sizeCategory.value,
+          size_category: sizeCategory.value,
           size: sizeSelect.value,
-          customDisplayNumber: document.querySelector('#editOrderNumber').value.trim(),
-          customDisplayName: document.querySelector('#editOrderDisplayName').value.trim().toUpperCase(),
-          memo: document.querySelector('#editOrderMemo').value.trim()
+          custom_display_number: document.querySelector('#editOrderNumber').value.trim() || null,
+          custom_display_name: document.querySelector('#editOrderDisplayName').value.trim().toUpperCase() || null,
+          memo: document.querySelector('#editOrderMemo').value.trim() || null
         })
       });
       if (!response.ok) throw new Error(await readResponseMessage(response));
       const result = await response.json();
-      if (result.editCode) alert('Updated private code:\n\n' + result.editCode);
+      if (result.length === 0) throw new Error('Order not found or already deleted');
+
       dialog.close();
-      loadOrderedList();
+      await loadOrderedList();
     } catch (error) {
-      message.textContent = error.message || 'Could not update order';
+      message.textContent = error.message || 'Failed to update order';
+      message.style.color = '#be123c';
     }
   };
 
-  document.querySelector('#deleteOrderButton').onclick = async () => {
+  const deleteButton = document.querySelector('#deleteOrderButton');
+  deleteButton.onclick = async () => {
     if (!confirm('Delete this order?')) return;
-    const token = codeInput.value.trim();
     try {
-      const response = await fetch(`${API_BASE_URL}/api/orders/${orderId}`, {
-        method: 'DELETE', headers: {'X-Edit-Token': token}
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/orders?order_id=eq.${orderId}`, {
+        method: 'PATCH',
+        headers: {...SUPABASE_HEADERS, Prefer: 'return=minimal'},
+        body: JSON.stringify({delete_flag: true})
       });
       if (!response.ok) throw new Error(await readResponseMessage(response));
       dialog.close();
-      loadOrderedList();
+      await loadOrderedList();
     } catch (error) {
-      message.textContent = error.message || 'Could not delete order';
+      message.textContent = error.message || 'Failed to delete order';
+      message.style.color = '#be123c';
     }
   };
-
-  document.querySelector('#closeOrderEdit')?.addEventListener('click', () => {
-    document.querySelector('#orderEditDialog')?.close();
-  });
-}
-
-async function readResponseMessage(response) {
-  const text = await response.text();
-  try {
-    const result = JSON.parse(text);
-    return result.message || result.error || text || 'Request failed';
-  } catch (_error) {
-    return text || 'Request failed';
-  }
 }

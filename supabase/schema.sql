@@ -55,6 +55,22 @@ create policy "Authenticated users can delete shirt orders"
   to authenticated
   using (true);
 
+drop policy if exists "Public can update active shirt orders" on public.orders;
+create policy "Public can update active shirt orders"
+  on public.orders
+  for update
+  to anon, authenticated
+  using (delete_flag = false)
+  with check (delete_flag = false);
+
+drop policy if exists "Public can soft delete active shirt orders" on public.orders;
+create policy "Public can soft delete active shirt orders"
+  on public.orders
+  for update
+  to anon, authenticated
+  using (delete_flag = false)
+  with check (delete_flag = true);
+
 grant usage on schema public to anon, authenticated, service_role;
 grant insert on table public.orders to anon, authenticated;
 grant select, insert, update, delete on table public.orders to authenticated, service_role;
