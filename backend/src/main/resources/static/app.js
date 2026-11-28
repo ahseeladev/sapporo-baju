@@ -1,6 +1,7 @@
-const API_BASE_URL = window.location.hostname === 'localhost'
-  ? ''
-  : 'https://YOUR-RENDER-SERVICE.onrender.com';
+const API_BASE_URL =
+  window.location.hostname === 'localhost'
+    ? ''
+    : 'https://sapporo-baju.onrender.com';
 
 const itemsContainer = document.querySelector('#items');
 const itemCount = document.querySelector('#orderCount');
