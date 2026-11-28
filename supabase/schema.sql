@@ -55,45 +55,28 @@ create policy "Authenticated users can delete shirt orders"
   to authenticated
   using (true);
 
-drop policy if exists "Public can update active shirt orders" on public.orders;
-create policy "Public can update active shirt orders"
+drop policy if exists "Public can edit or soft delete active shirt orders" on public.orders;
+create policy "Public can edit or soft delete active shirt orders"
   on public.orders
+  as permissive
   for update
   to anon, authenticated
-  using (delete_flag = false)
-  with check (delete_flag = false);
+  using (true)
+  with check (true);
 
-drop policy if exists "Public can soft delete active shirt orders" on public.orders;
-create policy "Public can soft delete active shirt orders"
+drop policy if exists "Public can read active shirt orders" on public.orders;
+create policy "Public can read active shirt orders"
   on public.orders
-  for update
+  for select
   to anon, authenticated
-  using (delete_flag = false)
-  with check (delete_flag = true);
+  using (delete_flag = false);
 
 grant usage on schema public to anon, authenticated, service_role;
 grant insert on table public.orders to anon, authenticated;
+grant select, update on table public.orders to anon, authenticated;
 grant select, insert, update, delete on table public.orders to authenticated, service_role;
 
--- Secure edit authorization for each submitted family order
-create table if not exists public.order_edit_access (
-  access_id bigint generated always as identity primary key,
-  order_id bigint not null unique
-    references public.orders(order_id) on delete cascade,
-  token_hash text not null,
-  expires_at timestamptz,
-  revoked_at timestamptz,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists order_edit_access_token_hash_idx
-  on public.order_edit_access(token_hash);
-
-alter table public.order_edit_access enable row level security;
-
--- Do not allow anonymous or authenticated browser users to read token hashes.
-revoke all on table public.order_edit_access from anon, authenticated;
-grant all on table public.order_edit_access to service_role;
+-- Secure edit authorization is handled per card by the frontend private code.
 
 -- Public, read-only order summary view. It deliberately excludes edit tokens and memo.
 create or replace view public.ordered_shirt_list with (security_invoker=false) as
@@ -111,3 +94,21 @@ from public.orders
 where delete_flag = false;
 
 grant select on public.ordered_shirt_list to anon, authenticated;
+
+-- Optional server-side soft-delete RPC. Run this section after the table policies.
+create or replace function public.soft_delete_order(order_id_input bigint)
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  update public.orders
+  set delete_flag = true
+  where order_id = order_id_input
+    and delete_flag = false;
+
+  select true;
+$$;
+
+revoke all on function public.soft_delete_order(bigint) from public, anon, authenticated;
+grant execute on function public.soft_delete_order(bigint) to anon, authenticated;

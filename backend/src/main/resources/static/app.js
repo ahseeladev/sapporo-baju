@@ -12,6 +12,9 @@ const itemCount = document.querySelector('#item-count');
 const form = document.querySelector('#orderForm');
 const message = document.querySelector('#message');
 
+let newestOrderId = null;
+let newestOrderTimer = null;
+
 function addItem(values = {}) {
   const row = document.createElement('div');
   row.className = 'item-row';
@@ -105,7 +108,15 @@ form.addEventListener('submit', async event => {
       });
       if (!response.ok) throw new Error(await response.text());
       const inserted = await response.json();
-      if (itemIndex === 0 && inserted[0]?.order_id) parentOrderId = inserted[0].order_id;
+      if (itemIndex === 0 && inserted[0]?.order_id) {
+        parentOrderId = inserted[0].order_id;
+        newestOrderId = String(inserted[0].order_id);
+        if (newestOrderTimer) clearTimeout(newestOrderTimer);
+        newestOrderTimer = setTimeout(() => {
+          newestOrderId = null;
+          document.querySelectorAll('.new-order-card').forEach(card => card.classList.remove('new-order-card'));
+        }, 30000);
+      }
     }
 
     form.reset();
@@ -114,6 +125,8 @@ form.addEventListener('submit', async event => {
     await loadOrderedList();
     document.querySelector('#successDialog').showModal();
     message.textContent = '';
+
+    // Highlight the newest order
   } catch (error) {
     message.textContent = error.message || 'The order could not be submitted';
   }
@@ -187,13 +200,14 @@ async function loadOrderedList() {
 
     count.textContent = `${orders.length} ${orders.length === 1 ? 'order' : 'orders'}`;
     grid.innerHTML = orders.map((order, index) => `
-      <article class="ordered-card" data-order-id="${escapeHtml(order.order_id)}" data-parent-id="${escapeHtml(order.parent_order_id || '')}" data-name="${escapeHtml(order.name)}" data-size-category="${escapeHtml(order.size_category)}" data-size="${escapeHtml(order.size)}" data-display-number="${escapeHtml(order.custom_display_number || '')}" data-display-name="${escapeHtml(order.custom_display_name || '')}">
-        <div class="ordered-card-heading">
-          <strong>#${index + 1}</strong>
-          <span>${escapeHtml(order.size_category)} · ${escapeHtml(order.size)}</span>
-        </div>
+      <article class="ordered-card ${String(order.order_id) === newestOrderId ? 'new-order-card' : ''}" data-order-id="${escapeHtml(order.order_id)}" data-parent-id="${escapeHtml(order.parent_order_id || '')}" data-name="${escapeHtml(order.name)}" data-size-category="${escapeHtml(order.size_category)}" data-size="${escapeHtml(order.size)}" data-display-number="${escapeHtml(order.custom_display_number || '')}" data-display-name="${escapeHtml(order.custom_display_name || '')}">
+        ${String(order.order_id) === newestOrderId ? '<span class="new-order-badge">NEW</span>' : ''}
         <div class="ordered-card-display">
-          <div class="ordered-by"><span>Ordered by:</span> <strong>${escapeHtml(order.name)}</strong></div>
+          <dl class="ordered-card-details">
+            <div><dt>Size</dt><dd>${escapeHtml(order.size_category)} · ${escapeHtml(order.size)}</dd></div>
+            <div><dt>Ordered By</dt><dd>${escapeHtml(order.name)}</dd></div>
+            <div><dt>Ordered Date</dt><dd>${order.created_at ? escapeHtml(new Date(order.created_at).toLocaleDateString()) : '-'}</dd></div>
+          </dl>
           <div class="ordered-custom-print" aria-label="Custom shirt print">
             <span class="ordered-custom-name">${escapeHtml(order.custom_display_name || '-')}</span>
             <strong class="ordered-custom-number">${escapeHtml(order.custom_display_number || '-')}</strong>
@@ -206,12 +220,9 @@ async function loadOrderedList() {
     grid.querySelectorAll('.ordered-card').forEach(card => {
       const editButton = card.querySelector('.ordered-edit-button');
       const orderId = card.dataset.orderId;
-      const parentId = card.dataset.parentId;
-      const ownerId = parentId || orderId;
 
       editButton.addEventListener('click', () => {
-        // Open the edit/delete modal for the order
-        openEditDeleteModal(orderId, ownerId);
+        openEditDeleteModal(orderId);
       });
     });
   } catch (error) {
@@ -228,7 +239,7 @@ function escapeHtml(value) {
 
 loadOrderedList();
 
-function openEditDeleteModal(orderId, ownerId) {
+function openEditDeleteModal(orderId) {
   const dialog = document.querySelector('#orderEditDialog');
   const codeStep = dialog.querySelector('.order-edit-code-step');
   const form = document.querySelector('#orderEditForm');
@@ -239,6 +250,8 @@ function openEditDeleteModal(orderId, ownerId) {
   const card = document.querySelector(`.ordered-card[data-order-id="${CSS.escape(orderId)}"]`);
 
   codeInput.value = '';
+  codeInput.disabled = false;
+  document.querySelector('#unlockOrderButton').disabled = false;
   form.hidden = true;
   codeStep.hidden = false;
   message.textContent = '';
@@ -267,21 +280,26 @@ function openEditDeleteModal(orderId, ownerId) {
     const token = codeInput.value.trim().toUpperCase().replace(/\s+/g, '');
     message.className = 'edit-order-message';
     if (!token) {
-      message.textContent = 'Enter your private code';
-      message.style.color = '#be123c';
+      const codeMessage = document.querySelector('#editCodeMessage');
+      codeMessage.textContent = 'Enter your private code in NAME_NUMBER format';
+      codeMessage.style.color = '#be123c';
       return;
     }
     const cardName = card.dataset.displayName || '';
     const cardNumber = card.dataset.displayNumber || '';
     const expectedCode = `${cardName}_${cardNumber}`.replace(/\s+/g, '').toUpperCase();
     if (token !== expectedCode) {
-      message.textContent = 'Invalid or expired private code';
-      message.style.color = '#be123c';
+      const codeMessage = document.querySelector('#editCodeMessage');
+      codeMessage.textContent = 'Invalid code. Use CUSTOMNAME_CUSTOMNUMBER, for example ALEESHA_24';
+      codeMessage.style.color = '#be123c';
       return;
     }
+    const codeMessage = document.querySelector('#editCodeMessage');
+    codeMessage.textContent = '';
+    codeMessage.style.color = '';
+    document.querySelector('#unlockOrderButton').disabled = true;
     codeStep.hidden = true;
     form.hidden = false;
-    message.textContent = '';
   };
 
   form.onsubmit = async event => {
@@ -339,3 +357,15 @@ async function readResponseMessage(response) {
     return text;
   }
 }
+
+document.querySelector('#closeOrderEdit')?.addEventListener('click', () => {
+  document.querySelector('#orderEditDialog')?.close();
+});
+
+document.querySelectorAll('dialog').forEach(dialog => {
+  dialog.addEventListener('click', event => {
+    const rect = dialog.getBoundingClientRect();
+    const inside = event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
+    if (!inside) dialog.close();
+  });
+});
